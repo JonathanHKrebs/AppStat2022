@@ -16,32 +16,33 @@ class Error_Prop:
         self.err_vals = err_vals
         self.corr = corr
         self.covar = self.corr.copy()
-        for i in range(len(self.covar)):
-            for j in range(len(self.covar)):
-                self.covar[i][j] *= err_vals[i] * err_vals[j]
+        for i in range(len(self.err_vals)):
+            for j in range(len(self.err_vals)):
+                self.covar[i,j] *=  err_vals[i] * err_vals[j]
         self.derivatives = [self.eq.diff(var) for var in sym_var]
-        self.functions = [sp.lambdify((*sym_var, *sym_err), derive) for derive in self.derivatives]
-        self.diff_vals = [func(*vals, *err_vals) for func in self.functions]
+        self.functions = [sp.lambdify(self.sym_var, derive) for derive in self.derivatives]
+        self.diff_vals = [func(*vals) for func in self.functions]
 
     def get_propEq(self):
-        propEq = 0
+        self.propEq = 0
         for i in range(len(self.diff_vals)):
             for j in range(len(self.diff_vals)):
-                propEq += self.derivatives[i] * self.derivatives[j] * self.corr[i][j]* self.sym_err[i] * self.sym_err[j]
-        return sp.sqrt(propEq)
+                self.propEq += self.derivatives[i] * self.derivatives[j] * self.corr[i][j]* self.sym_err[i] * self.sym_err[j]
+        return sp.sqrt(self.propEq)
 
     def get_error(self):
-        error = 0
+        self.error = 0
         for i in range(len(self.diff_vals)):
             for j in range(len(self.diff_vals)):
-                error += self.diff_vals[i] * self.diff_vals[j] * self.covar[i][j]
-        return np.sqrt(error)
+                self.error += self.diff_vals[i] * self.diff_vals[j] * self.corr[i][j]* self.err_vals[i] * self.err_vals[j]
+        return np.sqrt(self.error)
     
     def get_contributions(self):
         contributions = []
         for i in range(len(self.diff_vals)):
-            contributions.append(self.diff_vals[i]**2 * self.covar[i][i])
+            contributions.append(self.diff_vals[i]**2*self.err_vals[i]**2)
         return contributions
+    
     
     def update(self):
         self.covar = self.corr.copy()
@@ -99,6 +100,16 @@ def transform_method(f, var, range, N_points, random):
     inverse_func = sp.lambdify(u, inverse)
     us = random.uniform(size = N_points)
     return inverse_func(us)
+
+def transform_function(f, var, range):
+    F = sp.integrate(f, (var, range[0], var))
+    integral = sp.integrate(f, (var, *range))
+    F = F/integral
+    u = sp.symbols('u', positive = True)
+    inverse = sp.solve(F - u, var)[0]
+    inverse_func = sp.lambdify(u, inverse)
+    return inverse_func
+
 
 def accept_reject(N_points, xrange, yrange, random, func, *args):
     ''' Number points, x range, y range, random generator, function, function arguments'''
@@ -176,6 +187,7 @@ def fisher_with_params(data_1, data_2, w_0 = 0):
     mu_2 = np.mean(data_2, axis=0)
     cov_sum = np.cov(data_1, rowvar=False) + np.cov(data_2, rowvar=False)
     w = inv(cov_sum) @ (mu_1 - mu_2)
+    w *= -1
     return w, w @ data_1.T + w_0, w @ data_2.T + w_0
 
 def get_runs(residuals):
@@ -197,13 +209,13 @@ def runstest(residuals):
     N_B = np.sum(residuals < 0)
     expected = 1 + 2*N_A*N_B/(N)
     sig_expected = (2*N_A*N_B*(2*N_A*N_B - N))/(N**2*(N-1))
-    z = (N_runs - expected)/np.sqrt(sig_expected)
+    z = (N_runs - expected)/sig_expected
     p = 2*stats.norm.sf(abs(z))
     return z, p, expected, sig_expected
 
 def plot_residuals(ax, x, res, yerrs, xlabel):
-    ax_res = ax.inset_axes([0.0, -0.25, 1, 0.2])
-    ax_res.errorbar(x, res, yerr = yerrs, fmt = 'o', color = 'black')
+    ax_res = ax.inset_axes([0.0, -0.35, 1, 0.3])
+    ax_res.errorbar(x, res, yerr = yerrs, fmt = '.', color = 'black')
     ax_res.set(xlabel = xlabel, ylabel = 'Residuals')
     ax_res.axhline(0, color = 'red', linewidth = 2)
     return ax_res
@@ -220,7 +232,7 @@ def plot_gauss_hist(ax, bincenters, count, title, xlabel, guesses, text_loc = (0
     ax.errorbar(bincenters, count, xerr = xerr, yerr = count_err, fmt = 'o', color = 'black')
     x = np.linspace(np.min(bincenters), np.max(bincenters), 100)
     ax.plot(x, gauss(x, *temp_minuit.values[:]), color = 'red')
-    ax.set(xlabel = xlabel, ylabel = f'Frequency/ {binwidth:.2f} nm', title = title)
+    ax.set(xlabel = xlabel, ylabel = f'Frequency/ {binwidth:.2f}', title = title)
 
     chi2_val, ndof, chi2_prob = evaluate_chi2(temp_minuit, len(count))
     d = {'Chi2': chi2_val,

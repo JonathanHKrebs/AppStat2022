@@ -34,13 +34,13 @@ class Error_Prop:
         error = 0
         for i in range(len(self.diff_vals)):
             for j in range(len(self.diff_vals)):
-                error += self.diff_vals[i] * self.diff_vals[j] * self.covar[i][j]
+                error += self.diff_vals[i] * self.diff_vals[j] * self.corr[i][j]
         return np.sqrt(error)
     
     def get_contributions(self):
         contributions = []
         for i in range(len(self.diff_vals)):
-            contributions.append(self.diff_vals[i]**2 * self.covar[i][i])
+            contributions.append(self.diff_vals[i]**2)
         return contributions
     
     def update(self):
